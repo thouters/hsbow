@@ -6,7 +6,86 @@ $(function() {
 	});
 });
 
-var rootstate = {
+var calculator_example = {
+"on" : {
+    states: {
+        negated: {
+            handlers: {
+                CE: {dst: "begin"},
+                DIGIT_0: {dst: "zero1"},
+                DIGIT_1_9: {dst: "int1"},
+                POINT: {dst: "frac1"}
+            }
+        },
+        ready: {
+            handlers: {
+                initial: { dst: "begin" },
+                POINT: { dst: "frac1" },
+                DIGIT_0: { dst: "zero1" },
+                DIGIT_1_9: { dst: "int1" },
+                OPER: {dst: "opEntered" },
+            },
+            states: {
+                result: { },
+                begin: { 
+                    handlers: {
+                        OPER_: {dst: "negated1" }
+                    }
+                }
+            }
+        },
+        opEntered: { 
+            handlers: {
+                OPER: { dst: "negated2" },
+                POINT: { dst: "frac2" },
+                DIGIT_1_9: { dst: "int2" },
+                DIGIT_0: { dst: "zero2" }
+            }
+        },
+        operand1: {
+            states: {
+                zero1: {
+                    handlers: {
+                        DIGIT_1_9: { dst: "int1" },
+                        POINT: { dst: "frac1" }
+                    }
+                },
+                int1: {
+                    handlers: {
+                        POINT: { dst: "frac1" }
+                    }
+                },
+                frac1: { }
+            }
+        },
+        negated2: { 
+             handlers: {
+                        CE: { dst: "opEntered" },
+                        DIGIT_0: { dst: "zero2" },
+                        POINT: { dst: "frac2" },
+                        DIGIT_1_9: { dst: "int2" }
+            }
+        },
+        operand2: {
+            states: {
+                zero2: {
+                    handlers: {
+                        DIGIT_1_9: { dst: "int2" },
+                        POINT: { dst: "frac2" }
+                    }
+                },
+                int2: {
+                        POINT: { dst: "frac2" }
+                },
+                frac2: { }
+            }
+        },
+        error: { }
+    }
+}
+};
+
+var fewstates_example = {
 "rootstate": {
     "handlers": {
         "entry": {
@@ -54,7 +133,9 @@ var rootstate = {
 }
 };
 
-var colorlist = ['purple', 'red', 'orange', 'lime', 'green', 'blue', 'navy', 'black'];
+var colorlist = ['purple', 'red', 'orange', 'lime', 'green', 'blue', 'navy', 'black',
+'aqua', 'fuchsia', 'gray', 'maroon', 'olive','silver', 'teal',
+"#9D2E2C", "#F9EA99", "#7DB6D5", "#E7A555", "#4A4747"];
 
 function polarToCartesian(cx, cy, rad, angle) 
 {
@@ -80,8 +161,8 @@ function drawstate(svg, statename, state, x, y, startAngle, angle, radius, stepr
     var start = polarToCartesian(x, y, radius, startAngle);
     var end = polarToCartesian(x, y, radius, endAngle);
     var arcSweep = (endAngle - startAngle) <= 180 ? false : true;
-    var path = svg.createPath({fill: 'none', stroke: color, 'stroke-width': 3});
-    svg.path(path.move(start.x, start.y).arc(
+    var path = chart.svg.createPath({fill: 'none', stroke: color, 'stroke-width': 3});
+    chart.svg.path(path.move(start.x, start.y).arc(
         radius,
         radius, 
         //startAngle, 
@@ -94,10 +175,10 @@ function drawstate(svg, statename, state, x, y, startAngle, angle, radius, stepr
     ), {fill: 'none', stroke: color, strokeWidth: 5, id:statename});
 
     // add name of the state
-    var text = svg.text('', 
+    var text = chart.svg.text('', 
     {fontFamily: 'Verdana', fontSize: '20', fill: color});
-    var texts = svg.createText(); 
-    svg.textpath(text, '#'+statename, texts.string(statename)); 
+    var texts = chart.svg.createText(); 
+    chart.svg.textpath(text, '#'+statename, texts.string(statename)); 
 
     /* draw handlers */
     if ("handlers" in state) {
@@ -106,8 +187,7 @@ function drawstate(svg, statename, state, x, y, startAngle, angle, radius, stepr
         for (var handlername in state.handlers) {
             var handler = state.handlers[handlername];
             var pos = polarToCartesian(x, y, radius, startAngle + availableangle * index);
-            svg.circle(pos.x, pos.y, 5, {fill: 'none', stroke: color, 'stroke-width': 1});
-
+            chart.svg.circle(pos.x, pos.y, 5, {fill: 'none', stroke: color, 'stroke-width': 1});
             ++index;
         }
     }
@@ -117,7 +197,7 @@ function drawstate(svg, statename, state, x, y, startAngle, angle, radius, stepr
         var availableangle = (angle / Object.keys(state.states).length) - stepangle;
         for (var statename in state.states) {
             var substate = state.states[statename];
-            drawstate(svg, statename, substate, x, y, 
+            drawstate(chart, statename, substate, x, y, 
                 startAngle + stepangle *index + availableangle*index, 
                 availableangle, 
                 radius - stepradius, 
@@ -128,13 +208,39 @@ function drawstate(svg, statename, state, x, y, startAngle, angle, radius, stepr
     }
 }
 
+function drawtransitions(chart, statename, state, x, y, startAngle, angle, radius, stepradius, stepangle) 
+{
+    chart.states.push( {
+        state: statename,
+        startAngle: startAngle,
+        stopAngle: startAngle+angle,
+        next_to_slot: 0
+    });
+
+    /* draw handlers */
+    if ("handlers" in state) {
+        var index = 0;
+        var availableangle = angle / Object.keys(state.handlers).length;
+        for (var handlername in state.handlers) {
+            var handler = state.handlers[handlername];
+            var pos = polarToCartesian(x, y, radius, startAngle + availableangle * index);
+            chart.svg.circle(pos.x, pos.y, 5, {fill: 'none', stroke: color, 'stroke-width': 1});
+            ++index;
+        }
+    }
+
+
+
+}
+
 function drawInitial(svg) 
 {
-    var x = 300;
-    var y = 300;
+    var x = 450;
+    var y = 450;
     var index=0;
-    for (var statename in rootstate) {
-        drawstate(svg, statename, rootstate[statename], x, y, 0, 359, 200, 30, 5);
+    var chart = {svg: svg, states: []};
+    for (var statename in calculator_example) {
+        drawstate(chart, statename, calculator_example[statename], x, y, 0, 359, 400, 30, 1);
         index++;
     }
 }
