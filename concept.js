@@ -148,12 +148,11 @@ function polarToCartesian(cx, cy, rad, angle)
 
 var colorindex = 0;
 
-function drawstate(svg, statename, state, x, y, startAngle, angle, radius, stepradius, stepangle) 
+
+function drawstate(chart, statename, state, x, y, startAngle, angle, radius, stepradius, stepangle) 
 {
-
-
     // debug: mark center of the diagram
-    svg.circle(x, y, 10, {fill: 'none', stroke: 'green', 'stroke-width': 3});
+    chart.svg.circle(x, y, 10, {fill: 'none', stroke: 'green', 'stroke-width': 3});
 
     var color = colorlist[colorindex++];
     // draw state arc
