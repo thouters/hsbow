@@ -7,7 +7,14 @@ $(function() {
 });
 
 var calculator_example = {
+states: {
 "on" : {
+    handlers: {
+                CE: {dst: "begin"},
+                DIGIT_0: {dst: "zero1"},
+                DIGIT_1_9: {dst: "int1"},
+                POINT: {dst: "frac1"}
+    },
     states: {
         negated: {
             handlers: {
@@ -83,53 +90,6 @@ var calculator_example = {
         error: { }
     }
 }
-};
-
-var fewstates_example = {
-"rootstate": {
-    "handlers": {
-        "entry": {
-            "run": "code to executea()"
-        },
-        "SIGINT1": { 
-            "run": "code to executeb()",
-            "dst": "state2"
-        },
-        "initial": {
-            "dst": "state1"
-        }
-    },
-    "states": {
-        "state1": {
-            "handlers": {
-                "SIGINT1": { 
-                    "run": "code to execute1()",
-                    "dst": "rootstate"
-                },
-                "SIGINT2": { 
-                    "run": "code to execute2()"
-                },
-                "SIGINT3": { 
-                    "run": "code to execute3()",
-                    "dst": "state2"
-                }
-            },
-            "states": {
-                "test1" : {},
-                "test2" : {}
-            }
-        },
-        "state2": {
-            "handlers": {
-                "entry": {
-                    "run": "code to execute()"
-                },
-                "exit": {
-                    "run": "code to execute()"
-                }
-            }
-        }
-    }
 }
 };
 
@@ -149,14 +109,21 @@ function polarToCartesian(cx, cy, rad, angle)
 var colorindex = 0;
 
 
-function drawstate(chart, statename, state, x, y, startAngle, angle, radius, stepradius, stepangle) 
+function drawstate(chart, statename, state, x, y, startAngle, available_angle, radius, stepradius) 
 {
     // debug: mark center of the diagram
     chart.svg.circle(x, y, 10, {fill: 'none', stroke: 'green', 'stroke-width': 3});
 
+    chart.states.push( {
+        state: statename,
+        startAngle: startAngle,
+        stopAngle: startAngle+available_angle,
+        next_to_slot: 0
+    });
+
     var color = colorlist[colorindex++];
     // draw state arc
-    var endAngle = startAngle + angle;
+    var endAngle = startAngle + available_angle;
     var start = polarToCartesian(x, y, radius, startAngle);
     var end = polarToCartesian(x, y, radius, endAngle);
     var arcSweep = (endAngle - startAngle) <= 180 ? false : true;
@@ -182,30 +149,69 @@ function drawstate(chart, statename, state, x, y, startAngle, angle, radius, ste
     /* draw handlers */
     if ("handlers" in state) {
         var index = 0;
-        var availableangle = angle / Object.keys(state.handlers).length;
+        var handlers = Object.keys(state.handlers).length;
+        var angle_increment = available_angle;
+        if (handlers>0) {
+             angle_increment /= handlers;
+        }
         for (var handlername in state.handlers) {
             var handler = state.handlers[handlername];
-            var pos = polarToCartesian(x, y, radius, startAngle + availableangle * index);
+            var pos = polarToCartesian(x, y, radius, startAngle + angle_increment * index);
             chart.svg.circle(pos.x, pos.y, 5, {fill: 'none', stroke: color, 'stroke-width': 1});
             ++index;
+
+            chart.handlers.push( {
+                state: statename,
+                startAngle: startAngle,
+                stopAngle: startAngle+available_angle,
+                next_to_slot: 0
+            });
         }
     }
     /* draw substates */
     if ("states" in state) {
-        var index = 0;
-        var availableangle = (angle / Object.keys(state.states).length) - stepangle;
+        var displacement = 0;
+
         for (var statename in state.states) {
             var substate = state.states[statename];
+            if (substate.totalhandlers > state.totalhandlers) {
+                throw "error";
+            }
+            var state_angle = available_angle*(substate.totalhandlers / state.totalhandlers);
+
             drawstate(chart, statename, substate, x, y, 
-                startAngle + stepangle *index + availableangle*index, 
-                availableangle, 
+                startAngle + displacement + chart.padding,
+                state_angle - chart.padding, 
                 radius - stepradius, 
-                stepradius, 
-                stepangle);
-            ++index;
+                stepradius
+            ); 
+            displacement += state_angle;
         }
     }
 }
+
+function maxsubstates(statename, state) {
+        if (state.hasOwnProperty("handlers")) {
+            handlers = Object.keys(state.handlers).length;
+        } else {
+            //allocate for empty states
+            handlers = 1;
+        }
+        totalhandlers = 0;
+        if (state.hasOwnProperty("states")) {
+            for (var statename in state.states) {
+                substate = maxsubstates(statename, state.states[statename]);
+                state.states[statename] = substate; 
+                totalhandlers += substate["totalhandlers"];
+            }
+        }
+        if (handlers > totalhandlers) {
+                totalhandlers = handlers;
+        }
+        state["totalhandlers"] = totalhandlers;
+        return state; 
+}
+
 
 function drawtransitions(chart, statename, state, x, y, startAngle, angle, radius, stepradius, stepangle) 
 {
@@ -227,9 +233,6 @@ function drawtransitions(chart, statename, state, x, y, startAngle, angle, radiu
             ++index;
         }
     }
-
-
-
 }
 
 function drawInitial(svg) 
@@ -237,9 +240,15 @@ function drawInitial(svg)
     var x = 450;
     var y = 450;
     var index=0;
-    var chart = {svg: svg, states: []};
-    for (var statename in calculator_example) {
-        drawstate(chart, statename, calculator_example[statename], x, y, 0, 359, 400, 30, 1);
+    var chart = {padding: 1, svg: svg, states: [], handlers:[]};
+    chart["rootstate"] = maxsubstates("root", calculator_example);
+    for (var statename in chart.rootstate.states) {
+        drawstate(chart, statename, chart.rootstate.states[statename], x, y, 0, 359, 400, 30);
+        index++;
+    }
+
+    for (var statename in chart.rootstate.states) {
+        drawtransitions(chart, statename, chart.rootstate.states[statename], x, y, 0, 359, 400, 30, 1);
         index++;
     }
 }
